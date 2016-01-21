@@ -59,12 +59,13 @@ end
 # --------------------------------------------------------------------------------- [Scanner]
 # -------------------------------------------------------------------------------------------
 
+require 'fileutils'
 require 'tmpdir'
 
 class Scanner
-  SCANNER_ICC = '/home/jeff/bin/scansnap.icc'
-  TARGET_ICC  = '/home/jeff/bin/sRGB_v4_ICC_preference.icc'
-  OUT_DIR     = '/home/jeff/scan'
+  SCANNER_ICC = 'profiles/scansnap.icc'
+  TARGET_ICC  = 'profiles/sRGB_v4_ICC_preference.icc'
+  OUT_DIR     = File.join(Dir.home, 'scan')
 
   attr_reader :source, :crop, :deskew, :normalize, :resolution, :profile, :geometry
 
