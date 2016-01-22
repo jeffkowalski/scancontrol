@@ -1,4 +1,4 @@
-#!/usr/bin/ruby
+#!/usr/bin/ruby2.0
 
 
 # -------------------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ class Scanner
         command +=   %{--batch=#{tmpdir}/#{timestamp}_%03d.tif }
         command +=   %{#{geometry} --swdespeck=2 --sleeptimer 60}
         $logger.info command
-        system command unless $DEBUG
+        system command unless $dryrun
 
         $logger.info 'adjusting images'
         Dir.glob("#{tmpdir}/*.tif") do |file|
@@ -139,17 +139,17 @@ class Scanner
                        %{#{tmpdir}/%[filename:f].jpg } :
                        %{#{OUT_DIR}/%[filename:f].jpg }
           $logger.info command
-          system command unless $DEBUG
+          system command unless $dryrun
         end
 
         if pdf?
           $logger.info 'converting to pdf'
           command  = %{gm convert #{tmpdir}/*.jpg #{OUT_DIR}/#{timestamp}.pdf}
           $logger.info command
-          system command unless $DEBUG
+          system command unless $dryrun
         end
 
-        if not $DEBUG
+        if not $dryrun
           if not system %{wmctrl -F -a scan}
             scan_desktop = `wmctrl -d | fgrep scan | awk "{ print \\$1; }"`
             system %{wmctrl -s #{scan_desktop.chomp}}
@@ -168,40 +168,61 @@ end
 # ---------------------------------------------------------------------------------- [Server]
 # -------------------------------------------------------------------------------------------
 
+require 'thor'
 require 'logger'
 
-class Server
-  attr_reader :options
+LOGFILE = File.join(Dir.home, '.scan-control.log')
 
-  def initialize options
-    @options = options
-    @quit = false
-    @controller = nil
-  end
+class Server < Thor
+  no_commands {
+    def redirect_output
+      unless LOGFILE == 'STDOUT'
+        logfile = File.expand_path(LOGFILE)
+        FileUtils.mkdir_p(File.dirname(logfile), :mode => 0755)
+        FileUtils.touch logfile
+        File.chmod 0644, logfile
+        $stdout.reopen logfile, 'a'
+      end
+      $stderr.reopen $stdout
+      $stdout.sync = $stderr.sync = true
+    end
 
-  def quit!
-    @quit = true
-    @controller.quit! if @controller
-  end
+    def trap_signals
+      trap(:INT)  do $logger.info 'caught SIGINT, exiting gracefully'  ; quit! ; end
+      trap(:QUIT) do $logger.info 'caught SIGQUIT, exiting gracefully' ; quit! ; end
+      trap(:TERM) do $logger.info 'caught SIGTERM, exiting gracefully' ; quit! ; end
+    end
 
-  def quit?
-    @quit
-  end
+    def quit!
+      @quit = true
+      @controller.quit! if @controller
+    end
 
-  def self.run! options
-    Server.new(options).run!
-  end
+    def quit?
+      @quit
+    end
 
-  def run!
-    redirect_output unless $DEBUG
+    def setup_logger
+      redirect_output if options[:log]
 
-    $logger = Logger.new STDOUT
-    $logger.level = $DEBUG ? Logger::DEBUG : Logger::INFO
-    $logger.info 'starting'
+      $logger = Logger.new STDOUT
+      $logger.level = options[:verbose] ? Logger::DEBUG : Logger::INFO
+      $logger.info 'starting'
+    end
+  }
 
+  class_option :log,     :type => :boolean, :default => true, :desc => "log output to ~/.scan-control.log"
+  class_option :verbose, :type => :boolean, :aliases => "-v", :desc => "increase verbosity"
+  class_option :dryrun,  :type => :boolean, :aliases => "-n", :desc => "perform a trial run with no changes made"
+  desc "listen", "Listen to the controller and run scanning jobs"
+  def listen
+    $dryrun = options[:dryrun]
+
+    setup_logger
     trap_signals
 
     @controller = Controller.new
+    @quit = false
     while !quit? do
       @controller.onbutton { |settings|
         Scanner.new(settings).scan
@@ -210,68 +231,6 @@ class Server
 
     $logger.info 'exiting'
   end
-
-  def redirect_output
-    unless options[:logfile] == 'STDOUT'
-      logfile = File.expand_path(options[:logfile])
-      FileUtils.mkdir_p(File.dirname(logfile), :mode => 0755)
-      FileUtils.touch logfile
-      File.chmod 0644, logfile
-      $stdout.reopen logfile, 'a'
-    end
-    $stderr.reopen $stdout
-    $stdout.sync = $stderr.sync = true
-  end
-
-  def trap_signals
-    trap(:INT)  do $logger.info 'caught SIGINT, exiting gracefully'  ; quit! ; end
-    trap(:QUIT) do $logger.info 'caught SIGQUIT, exiting gracefully' ; quit! ; end
-    trap(:TERM) do $logger.info 'caught SIGTERM, exiting gracefully' ; quit! ; end
-  end
 end
 
-
-# -------------------------------------------------------------------------------------------
-# --------------------------------------------------------------------------------- [Options]
-# -------------------------------------------------------------------------------------------
-
-require 'optparse'
-
-options = { :action => :run, :logfile => '/home/jeff/.scan-control.log' }
-
-logfile_help = 'the log filename, or STDOUT'
-debug_help   = 'set $DEBUG to true'
-warn_help    = 'enable warnings'
-
-op = OptionParser.new
-op.banner =  'scan control'
-op.separator ''
-op.separator 'Usage: scan-control.rb [options]'
-op.separator ''
-
-op.separator ''
-op.separator 'Process options:'
-op.on('-l', '--log LOGFILE', logfile_help)  { |value| options[:logfile]   = value }
-
-op.separator ''
-op.separator 'Ruby options:'
-op.on(      '--debug',        debug_help)   { $DEBUG = true }
-op.on(      '--warn',         warn_help)    { $-w = true    }
-
-op.separator ''
-op.separator 'Common options:'
-op.on('-h', '--help')                       { options[:action] = :help    }
-
-op.separator ''
-op.parse!(ARGV)
-
-
-# -------------------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------- [Run]
-# -------------------------------------------------------------------------------------------
-
-case options[:action]
-when :help    then puts op.to_s
-else
-  Server.run! options
-end
+Server.start
