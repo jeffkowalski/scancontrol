@@ -63,8 +63,8 @@ require 'fileutils'
 require 'tmpdir'
 
 class Scanner
-  SCANNER_ICC = 'profiles/scansnap.icc'
-  TARGET_ICC  = 'profiles/sRGB_v4_ICC_preference.icc'
+  SCANNER_ICC = File.expand_path(File.dirname(__FILE__)) + '/profiles/scansnap.icc'
+  TARGET_ICC  = File.expand_path(File.dirname(__FILE__)) + '/profiles/sRGB_v4_ICC_preference.icc'
   OUT_DIR     = File.join(Dir.home, 'scan')
 
   attr_reader :source, :crop, :deskew, :normalize, :resolution, :profile, :geometry
