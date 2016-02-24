@@ -211,10 +211,11 @@ class Server < Thor
     end
   }
 
-  class_option :log,     :type => :boolean, :default => true, :desc => "log output to ~/.scan-control.log"
-  class_option :verbose, :type => :boolean, :aliases => "-v", :desc => "increase verbosity"
-  class_option :dryrun,  :type => :boolean, :aliases => "-n", :desc => "perform a trial run with no changes made"
+  option :log,     :type => :boolean, :default => true, :desc => "log output to ~/.scan-control.log"
+  option :verbose, :type => :boolean, :aliases => "-v", :desc => "increase verbosity"
+  option :dryrun,  :type => :boolean, :aliases => "-n", :desc => "perform a trial run with no changes made"
   desc "listen", "Listen to the controller and run scanning jobs"
+  default_task :listen
   def listen
     $dryrun = options[:dryrun]
 
