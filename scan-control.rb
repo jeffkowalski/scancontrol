@@ -80,7 +80,7 @@ class Scanner
     @deskew = '-fuzz 10% -deskew 40% +repage' if @settings[:deskew]
     @deskew ||= ''
 
-    @normalize = '-normalize' if pdf?
+    @normalize = '-sigmoidal-contrast 8,65%' if pdf?
     @normalize ||= ''
 
     @resolution = '--resolution 300' if jpg?
