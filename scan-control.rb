@@ -150,10 +150,11 @@ class Scanner
         end
 
         if not $dryrun
-          if not system %{wmctrl -F -a scan}
+          window_name = File.basename File.expand_path OUT_DIR
+          if not system %{wmctrl -F -a #{window_name}}
             scan_desktop = `wmctrl -d | fgrep scan | awk "{ print \\$1; }"`
             system %{wmctrl -s #{scan_desktop.chomp}}
-            system %{nemo #{OUT_DIR}}
+            system %{sh ~/bin/spawn nemo #{OUT_DIR}}
           end
         end
       rescue => e
