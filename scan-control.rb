@@ -63,7 +63,7 @@ require 'fileutils'
 require 'tmpdir'
 
 class Scanner
-  SCANNER_ICC = File.expand_path(File.dirname(__FILE__)) + '/profiles/scansnap.icc'
+  SCANNER_ICC = File.expand_path(File.dirname(__FILE__)) + '/profiles/fujitsu-scansnap-ix500.icc'
   TARGET_ICC  = File.expand_path(File.dirname(__FILE__)) + '/profiles/sRGB_v4_ICC_preference.icc'
   OUT_DIR     = File.join(Dir.home, 'scan')
 
@@ -74,10 +74,10 @@ class Scanner
 
     @source = "--source='ADF Duplex'"
 
-    @crop = '-border 5x5 -fuzz 20% -trim +repage' if @settings[:crop]
+    @crop = '-border 5x5 -fuzz 10% -trim +repage' if @settings[:crop]
     @crop ||= ''
 
-    @deskew = '-fuzz 10% -deskew 40% +repage' if @settings[:deskew]
+    @deskew = '-fuzz 20% -deskew 40% +repage' if @settings[:deskew]
     @deskew ||= ''
 
     @normalize = '-sigmoidal-contrast 6,65%' if pdf?
@@ -128,7 +128,7 @@ class Scanner
         $logger.info 'adjusting images'
         Dir.glob("#{tmpdir}/*.tif") do |file|
           command  = %{convert #{file} -set filename:f "%t" }
-          command +=   %{-bordercolor '#bdc9d0' -background '#bdc9d0' }
+          command +=   %{-bordercolor '#e0e0e0' -background '#e0e0e0' }
           command +=   %{#{deskew} }
           command +=   %{#{crop} }
           #         command +=   %{-border 5x5 -crop `convert #{file} -virtual-pixel edge -blur 0x15 -fuzz 10% -trim -format '%wx%h%O' info:` +repage }
