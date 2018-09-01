@@ -121,7 +121,8 @@ class Scanner
         command +=   %{--format=tiff }
         command +=   %{#{source} --mode Color #{resolution} }
         command +=   %{--batch=#{tmpdir}/#{timestamp}_%03d.tif }
-        command +=   %{#{geometry} --swdespeck=2 --sleeptimer 60}
+        command +=   %{#{geometry} --swdespeck=2 --sleeptimer 60 }
+        command.strip!
         $logger.info command
         system command unless $dryrun
 
@@ -138,6 +139,7 @@ class Scanner
           command += pdf?  ?
                        %{#{tmpdir}/%[filename:f].jpg } :
                        %{#{OUT_DIR}/%[filename:f].jpg }
+          command.strip!
           $logger.info command
           system command unless $dryrun
         end
@@ -151,9 +153,15 @@ class Scanner
 
         if not $dryrun
           window_name = File.basename File.expand_path OUT_DIR
-          if not system %{wmctrl -F -a #{window_name}}
+
+          if system %{wmctrl -F -a #{window_name}}
+            $logger.info "activated window #{window_name}"
+          else
+            # output directory's window could not be activated, switch to "scan" desktop
             scan_desktop = `wmctrl -d | fgrep scan | awk "{ print \\$1; }"`
+            $logger.info "found scan desktop on #{scan_desktop}"
             system %{wmctrl -s #{scan_desktop.chomp}}
+            # spawn file manager (nemo) window for output directory
             system %{sh ~/bin/spawn nemo #{OUT_DIR}}
           end
         end
