@@ -180,7 +180,7 @@ end
 require 'thor'
 require 'logger'
 
-LOGFILE = File.join(Dir.home, '.scan-control.log')
+LOGFILE = File.join(Dir.home, '.log', '.scan-control.log')
 
 class Server < Thor
   no_commands {
