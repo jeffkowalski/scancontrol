@@ -220,7 +220,7 @@ class Server < Thor
     end
   }
 
-  option :log,     :type => :boolean, :default => true, :desc => "log output to ~/.scan-control.log"
+  option :log,     :type => :boolean, :default => true, :desc => "log output to #{LOGFILE}"
   option :verbose, :type => :boolean, :aliases => "-v", :desc => "increase verbosity"
   option :dryrun,  :type => :boolean, :aliases => "-n", :desc => "perform a trial run with no changes made"
   desc "listen", "Listen to the controller and run scanning jobs"
