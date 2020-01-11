@@ -11,7 +11,7 @@ GEM
       yard (~> 0.9.11)
     serialport (1.3.1)
     thor (1.0.1)
-    yard (0.9.20)
+    yard (0.9.24)
 
 PLATFORMS
   ruby
@@ -23,8 +23,5 @@ DEPENDENCIES
   serialport
   thor
 
-RUBY VERSION
-   ruby 2.5.1p57
-
 BUNDLED WITH
-   2.1.2
+   2.1.4
