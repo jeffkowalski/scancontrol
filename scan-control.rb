@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-
+# frozen_string_literal: true
 
 # -------------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------ [Controller]
@@ -14,7 +14,8 @@ class Controller
   STOP_BITS = 1
   PARITY    = SerialPort::NONE
 
-  def initialize
+  def initialize(logger)
+    @logger = logger
     @quit = false
   end
 
@@ -28,29 +29,41 @@ class Controller
 
   def onbutton
     result = ''
-    $logger.info 'controller starting'
+    @logger.info 'controller starting'
     SerialPort.open(PORT, BAUD_RATE, DATA_BITS, STOP_BITS, PARITY) do |sp|
       sp.read_timeout = 1000
-      while !quit?
-        $logger.debug 'controller listening'
+      until quit?
+        @logger.debug 'controller listening'
         result += sp.read
-        if result.include? ')'
-          $logger.info result
-          settings = transform result
-          $logger.info settings
-          yield settings
-          result = ''
-        end
+        next unless result.include? ')'
+
+        @logger.info result
+        settings = transform result
+        @logger.info settings
+        yield settings
+        result = ''
       end
     end
-    $logger.info 'controller exiting'
+    @logger.info 'controller exiting'
   end
 
   private
-  def transform perl
+
+  def transform(perl)
     # from perl string  "('size' => 'letter', 'mode' => 'pdf', 'crop' => 0, 'deskew' => 1)"
     # to   ruby hash    {:size=>:letter, :mode=>:pdf, :crop=>false, :deskew=>true}
-    perl.chomp.gsub(/[)(']/,'').split(/, ?/).map{|h| k,v = h.split(/\s?=>\s?/); {k.to_sym => v=='0' ? false : v=='1' ? true : v.to_sym}}.reduce(:merge)
+    perl.chomp.gsub(/[)(']/, '').split(/, ?/).map do |h|
+      k, v = h.split(/\s?=>\s?/)
+      value = case v
+              when '0'
+                false
+              when '1'
+                true
+              else
+                v.to_sym
+              end
+      { k.to_sym => value }
+    end.reduce(:merge)
   end
 end
 
@@ -63,13 +76,14 @@ require 'fileutils'
 require 'tmpdir'
 
 class Scanner
-  SCANNER_ICC = File.expand_path(File.dirname(__FILE__)) + '/profiles/fujitsu-scansnap-ix500.icc'
-  TARGET_ICC  = File.expand_path(File.dirname(__FILE__)) + '/profiles/sRGB_v4_ICC_preference.icc'
+  SCANNER_ICC = File.expand_path(__dir__) + '/profiles/fujitsu-scansnap-ix500.icc'
+  TARGET_ICC  = File.expand_path(__dir__) + '/profiles/sRGB_v4_ICC_preference.icc'
   OUT_DIR     = File.join(Dir.home, 'scan')
 
   attr_reader :source, :crop, :deskew, :normalize, :resolution, :profile, :geometry
 
-  def initialize settings
+  def initialize(logger, settings)
+    @logger = logger
     @settings = settings
 
     @source = "--source='ADF Duplex'"
@@ -87,9 +101,9 @@ class Scanner
     @resolution ||= '--resolution 200'
 
     @profile ||= ''
-    @profile += %{-intent Relative }
-    @profile += %{-profile #{SCANNER_ICC} }
-    @profile += %{-profile #{TARGET_ICC} +profile "*" }
+    @profile += %(-intent Relative )
+    @profile += %(-profile #{SCANNER_ICC} )
+    @profile += %(-profile #{TARGET_ICC} +profile "*" )
 
     @geometry = case @settings[:size]
                 when :a4    # A4 21cm x 29.7cm
@@ -111,64 +125,60 @@ class Scanner
     @settings[:mode] == :jpg
   end
 
-  def scan
-    timestamp = Time::now.strftime '%Y_%m_%d_%H_%M_%S'
-    Dir.mktmpdir('scan-control-') { |tmpdir|
-      begin
-        $logger.info 'scanning'
-        command  = %{/usr/bin/scanimage }
-        command +=   %{--device-name 'fujitsu' }
-        command +=   %{--format=tiff }
-        command +=   %{#{source} --mode Color #{resolution} }
-        command +=   %{--batch=#{tmpdir}/#{timestamp}_%03d.tif }
-        command +=   %{#{geometry} --swdespeck=2 --sleeptimer 60 }
+  def scan(dry_run)
+    timestamp = Time.now.strftime '%Y_%m_%d_%H_%M_%S'
+    Dir.mktmpdir('scan-control-') do |tmpdir|
+      @logger.info 'scanning'
+      command  = %(/usr/bin/scanimage )
+      command +=   %(--device-name 'fujitsu' )
+      command +=   %(--format=tiff )
+      command +=   %(#{source} --mode Color #{resolution} )
+      command +=   %(--batch=#{tmpdir}/#{timestamp}_%03d.tif )
+      command +=   %(#{geometry} --swdespeck=2 --sleeptimer 60 )
+      command.strip!
+      @logger.info command
+      system command unless dry_run
+
+      @logger.info 'adjusting images'
+      Dir.glob("#{tmpdir}/*.tif") do |file|
+        command  = %(convert #{file} -set filename:f "%t" )
+        command +=   %(-bordercolor '#e0e0e0' -background '#e0e0e0' )
+        command +=   %(#{deskew} )
+        command +=   %(#{crop} )
+        #         command +=   %(-border 5x5 -crop `convert #{file} -virtual-pixel edge -blur 0x15 -fuzz 10% -trim -format '%wx%h%O' info:` +repage )
+        command +=   %(#{profile} )
+        command +=   %(#{normalize} )
+        command +=   %(-quality 90% )
+        command += pdf? ? %(#{tmpdir}/%[filename:f].jpg ) : %(#{OUT_DIR}/%[filename:f].jpg )
         command.strip!
-        $logger.info command
-        system command unless $dryrun
-
-        $logger.info 'adjusting images'
-        Dir.glob("#{tmpdir}/*.tif") do |file|
-          command  = %{convert #{file} -set filename:f "%t" }
-          command +=   %{-bordercolor '#e0e0e0' -background '#e0e0e0' }
-          command +=   %{#{deskew} }
-          command +=   %{#{crop} }
-          #         command +=   %{-border 5x5 -crop `convert #{file} -virtual-pixel edge -blur 0x15 -fuzz 10% -trim -format '%wx%h%O' info:` +repage }
-          command +=   %{#{profile} }
-          command +=   %{#{normalize} }
-          command +=   %{-quality 90% }
-          command += pdf?  ?
-                       %{#{tmpdir}/%[filename:f].jpg } :
-                       %{#{OUT_DIR}/%[filename:f].jpg }
-          command.strip!
-          $logger.info command
-          system command unless $dryrun
-        end
-
-        if pdf?
-          $logger.info 'converting to pdf'
-          command  = %{gm convert #{tmpdir}/*.jpg #{OUT_DIR}/#{timestamp}.pdf}
-          $logger.info command
-          system command unless $dryrun
-        end
-
-        if not $dryrun
-          window_name = File.basename File.expand_path OUT_DIR
-
-          if system %{wmctrl -F -a #{window_name}}
-            $logger.info "activated window #{window_name}"
-          else
-            # output directory's window could not be activated, switch to "scan" desktop
-            scan_desktop = `wmctrl -d | fgrep scan | awk "{ print \\$1; }"`
-            $logger.info "found scan desktop on #{scan_desktop}"
-            system %{wmctrl -s #{scan_desktop.chomp}}
-            # spawn file manager (nemo) window for output directory
-            system %{sh ~/bin/spawn nemo #{OUT_DIR}}
-          end
-        end
-      rescue => e
-        $logger.info e
+        @logger.info command
+        system command unless dry_run
       end
-    }
+
+      if pdf?
+        @logger.info 'converting to pdf'
+        command = %(gm convert #{tmpdir}/*.jpg #{OUT_DIR}/#{timestamp}.pdf)
+        @logger.info command
+        system command unless dry_run
+      end
+
+      unless dry_run
+        window_name = File.basename File.expand_path OUT_DIR
+
+        if system %(wmctrl -F -a #{window_name})
+          @logger.info "activated window #{window_name}"
+        else
+          # output directory's window could not be activated, switch to "scan" desktop
+          scan_desktop = `wmctrl -d | fgrep scan | awk "{ print \\$1; }"`
+          @logger.info "found scan desktop on #{scan_desktop}"
+          system %(wmctrl -s #{scan_desktop.chomp})
+          # spawn file manager (nemo) window for output directory
+          system %(sh ~/bin/spawn nemo #{OUT_DIR})
+        end
+      end
+    rescue StandardError => e
+      @logger.info e
+    end
   end
 end
 
@@ -183,63 +193,69 @@ require 'logger'
 LOGFILE = File.join(Dir.home, '.log', 'scan-control.log')
 
 class Server < Thor
-  no_commands {
+  no_commands do
     def redirect_output
       unless LOGFILE == 'STDOUT'
         logfile = File.expand_path(LOGFILE)
-        FileUtils.mkdir_p(File.dirname(logfile), :mode => 0755)
+        FileUtils.mkdir_p(File.dirname(logfile), mode: 0o755)
         FileUtils.touch logfile
-        File.chmod 0644, logfile
+        File.chmod 0o644, logfile
         $stdout.reopen logfile, 'a'
       end
       $stderr.reopen $stdout
       $stdout.sync = $stderr.sync = true
     end
 
+    def setup_logger
+      redirect_output if options[:log]
+
+      @logger = Logger.new STDOUT
+      @logger.level = options[:verbose] ? Logger::DEBUG : Logger::INFO
+      @logger.info 'starting'
+
+      @log_info_queue = Queue.new
+      Thread.start do
+        nil while @logger.info(@log_info_queue.pop)
+      end
+    end
+
     def trap_signals
-      trap(:INT)  do $logger.info 'caught SIGINT, exiting gracefully'  ; quit! ; end
-      trap(:QUIT) do $logger.info 'caught SIGQUIT, exiting gracefully' ; quit! ; end
-      trap(:TERM) do $logger.info 'caught SIGTERM, exiting gracefully' ; quit! ; end
+      # rubocop: disable Style/Semicolon
+      trap(:INT)  { @log_info_queue << 'caught SIGINT, exiting gracefully';  quit! }
+      trap(:QUIT) { @log_info_queue << 'caught SIGQUIT, exiting gracefully'; quit! }
+      trap(:TERM) { @log_info_queue << 'caught SIGTERM, exiting gracefully'; quit! }
+      # rubocop: enable Style/Semicolon
     end
 
     def quit!
       @quit = true
-      @controller.quit! if @controller
+      @controller&.quit!
     end
 
     def quit?
       @quit
     end
+  end
 
-    def setup_logger
-      redirect_output if options[:log]
+  class_option :log,     type: :boolean, default: true, desc: "log output to #{LOGFILE}"
+  class_option :verbose, type: :boolean, aliases: '-v', desc: 'increase verbosity'
 
-      $logger = Logger.new STDOUT
-      $logger.level = options[:verbose] ? Logger::DEBUG : Logger::INFO
-      $logger.info 'starting'
-    end
-  }
-
-  option :log,     :type => :boolean, :default => true, :desc => "log output to #{LOGFILE}"
-  option :verbose, :type => :boolean, :aliases => "-v", :desc => "increase verbosity"
-  option :dryrun,  :type => :boolean, :aliases => "-n", :desc => "perform a trial run with no changes made"
-  desc "listen", "Listen to the controller and run scanning jobs"
+  method_option :dry_run, type: :boolean, aliases: '-n', desc: "don't log to database"
+  desc 'listen', 'Listen to the controller and run scanning jobs'
   default_task :listen
   def listen
-    $dryrun = options[:dryrun]
-
     setup_logger
     trap_signals
 
-    @controller = Controller.new
+    @controller = Controller.new @logger
     @quit = false
-    while !quit? do
-      @controller.onbutton { |settings|
-        Scanner.new(settings).scan
-      }
+    until quit?
+      @controller.onbutton do |settings|
+        Scanner.new(@logger, settings).scan(options[:dry_run])
+      end
     end
 
-    $logger.info 'exiting'
+    @logger.info 'exiting'
   end
 end
 
