@@ -251,7 +251,9 @@ class Server < Thor
     @quit = false
     until quit?
       @controller.onbutton do |settings|
-        Scanner.new(@logger, settings).scan(options[:dry_run])
+        fork do
+          Scanner.new(@logger, settings).scan(options[:dry_run])
+        end
       end
     end
 
