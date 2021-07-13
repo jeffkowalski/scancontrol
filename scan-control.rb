@@ -5,14 +5,14 @@
 # ------------------------------------------------------------------------------ [Controller]
 # -------------------------------------------------------------------------------------------
 
-require 'serialport'
+require 'rubyserial'
 
 class Controller
   PORT      = '/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A9MH1ZN7-if00-port0'
   BAUD_RATE = 9600
   DATA_BITS = 8
   STOP_BITS = 1
-  PARITY    = SerialPort::NONE
+  PARITY    = :none
 
   def initialize(logger)
     @logger = logger
@@ -30,19 +30,18 @@ class Controller
   def onbutton
     result = ''
     @logger.info 'controller starting'
-    SerialPort.open(PORT, BAUD_RATE, DATA_BITS, STOP_BITS, PARITY) do |sp|
-      sp.read_timeout = 1000
-      until quit?
-        @logger.debug 'controller listening'
-        result += sp.read
-        next unless result.include? ')'
+    sp = Serial.new(PORT, BAUD_RATE, DATA_BITS, PARITY, STOP_BITS)
+    until quit?
+      @logger.debug 'controller listening'
+      result += sp.read(72)
+      sleep 0.1
+      next unless result.include? ')'
 
-        @logger.info result
-        settings = transform result
-        @logger.info settings
-        yield settings
-        result = ''
-      end
+      @logger.info result
+      settings = transform result
+      @logger.info settings
+      yield settings
+      result = ''
     end
     @logger.info 'controller exiting'
   end

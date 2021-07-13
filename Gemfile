@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-gem 'serialport'
+gem 'rubyserial'
 gem 'thor'
 
 # for robe:
