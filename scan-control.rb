@@ -75,8 +75,8 @@ require 'fileutils'
 require 'tmpdir'
 
 class Scanner
-  SCANNER_ICC = File.expand_path(__dir__) + '/profiles/fujitsu-scansnap-ix500.icc'
-  TARGET_ICC  = File.expand_path(__dir__) + '/profiles/sRGB_v4_ICC_preference.icc'
+  SCANNER_ICC = "#{File.expand_path(__dir__)}/profiles/fujitsu-scansnap-ix500.icc"
+  TARGET_ICC  = "#{File.expand_path(__dir__)}/profiles/sRGB_v4_ICC_preference.icc"
   OUT_DIR     = File.join(Dir.home, 'scan')
 
   attr_reader :source, :crop, :deskew, :normalize, :resolution, :profile, :geometry
@@ -208,7 +208,7 @@ class Server < Thor
     def setup_logger
       redirect_output if options[:log]
 
-      @logger = Logger.new STDOUT
+      @logger = Logger.new $stdout
       @logger.level = options[:verbose] ? Logger::DEBUG : Logger::INFO
       @logger.info 'starting'
 
