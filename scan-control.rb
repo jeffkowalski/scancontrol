@@ -126,6 +126,8 @@ class Scanner
 
   def scan(dry_run)
     timestamp = Time.now.strftime '%Y_%m_%d_%H_%M_%S'
+    FileUtils.mkdir_p OUT_DIR, mode: 0o0700, noop: dry_run
+
     Dir.mktmpdir('scan-control-') do |tmpdir|
       @logger.info 'scanning'
       command  = %(/usr/bin/scanimage )
